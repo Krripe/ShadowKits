@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "shadowkits",
+  "version": "${version}",
+  "name": "ShadowKits",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/shadowkits/icon.png",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "org.krripe.shadowkits.Shadowkits"
+    ]
+  },
+  "mixins": [
+    "shadowkits.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": "*",
+    "fabric-language-kotlin": "*",
+    "fabric": "*",
+    "minecraft": ["1.21", "1.21.1", "1.21.2", "1.21.3"]
+  }
+}
