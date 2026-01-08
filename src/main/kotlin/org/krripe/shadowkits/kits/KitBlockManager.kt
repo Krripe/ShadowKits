@@ -5,9 +5,9 @@ import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.util.math.BlockPos
 import net.minecraft.world.World
-import org.krripe.shadowkits.config.BlockKitsConfig
 import org.krripe.shadowkits.config.KitsConfig
-import org.krripe.shadowkits.gui.KitBlockPreviewGui
+import org.krripe.shadowkits.gui.BlockPrivewGUI
+import org.krripe.shadowkits.gui.BlockPrivewGUIConfig
 import org.krripe.shadowkits.utils.PermissionsSystem
 import java.io.File
 import java.nio.file.Paths
@@ -58,7 +58,7 @@ object KitBlockManager {
         kitBlocks[Pair(dim, pos)] = kitName.lowercase()
         saveKitBlocks()
 
-        BlockKitsConfig.ensureKitTemplate(kitName)
+        BlockPrivewGUIConfig.ensureKitTemplate(kitName)
     }
 
     fun unsetKitBlock(pos: BlockPos, world: World) {
@@ -83,15 +83,15 @@ object KitBlockManager {
             }
         }
 
-        val cfg = BlockKitsConfig.getFor(kit.name)
-        when (BlockKitsConfig.actionForClick(cfg, isRightClick)) {
-            BlockKitsConfig.ClickAction.PREVIEW -> {
-                KitBlockPreviewGui.openOrUpdate(player, kit, cfg)
+        val cfg = BlockPrivewGUIConfig.getFor(kit.name)
+        when (BlockPrivewGUIConfig.actionForClick(cfg, isRightClick)) {
+            BlockPrivewGUIConfig.ClickAction.PREVIEW -> {
+                BlockPrivewGUI.openOrUpdate(player, kit, cfg)
             }
-            BlockKitsConfig.ClickAction.CLAIM -> {
+            BlockPrivewGUIConfig.ClickAction.CLAIM -> {
                 KitManager.giveKit(player, kit)
             }
-            BlockKitsConfig.ClickAction.NONE -> {
+            BlockPrivewGUIConfig.ClickAction.NONE -> {
             }
         }
     }

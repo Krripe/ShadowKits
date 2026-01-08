@@ -6,13 +6,14 @@ import net.fabricmc.fabric.api.event.player.AttackBlockCallback
 import net.fabricmc.fabric.api.event.player.UseBlockCallback
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.util.ActionResult
-import org.krripe.shadowkits.config.BlockKitsConfig
 import org.krripe.shadowkits.commands.KitCommand
 import org.krripe.shadowkits.config.KitsConfig
 import org.krripe.shadowkits.database.KitsDatabaseManager
 import org.krripe.shadowkits.kits.KitBlockManager
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
-import org.krripe.shadowkits.gui.KitGui
+import org.krripe.shadowkits.gui.BlockPrivewGUIConfig
+import org.krripe.shadowkits.gui.MainGUI
+import org.krripe.shadowkits.gui.MainGUIConfig
 import org.krripe.shadowkits.kits.KitManager
 
 class Shadowkits : ModInitializer {
@@ -22,7 +23,6 @@ class Shadowkits : ModInitializer {
         KitsConfig.loadConfig()
         KitsDatabaseManager.initialize()
         KitCommand.register()
-        BlockKitsConfig.load()
         KitBlockManager.loadKitBlocks()
 
         ServerPlayConnectionEvents.JOIN.register(ServerPlayConnectionEvents.Join { handler, _, _ ->
@@ -36,12 +36,15 @@ class Shadowkits : ModInitializer {
 
         ServerLifecycleEvents.SERVER_STARTED.register {
             KitBlockManager.loadKitBlocks()
+            MainGUIConfig.reload()
+            BlockPrivewGUIConfig.reload()
+            KitBlockManager.loadKitBlocks()
         }
 
         ServerPlayConnectionEvents.DISCONNECT.register(ServerPlayConnectionEvents.Disconnect { handler, _ ->
             val player = handler.player
             player.server.execute {
-                KitGui.shutdownAll()
+                MainGUI.shutdownAll()
             }
         })
 
@@ -66,7 +69,7 @@ class Shadowkits : ModInitializer {
 
         ServerLifecycleEvents.SERVER_STOPPING.register {
             KitsDatabaseManager.shutdown()
-            KitGui.shutdownAll()
+            MainGUI.shutdownAll()
         }
 
         println("[ShadowKits] initialized Successful")

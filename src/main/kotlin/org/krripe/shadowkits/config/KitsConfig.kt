@@ -8,6 +8,8 @@ import org.krripe.shadowkits.kits.KitManager
 import org.krripe.shadowkits.utils.CustomColorParser.processAllFormats
 import java.io.File
 import java.nio.file.Paths
+import java.text.SimpleDateFormat
+import java.util.Date
 
 object KitsConfig {
 
@@ -17,18 +19,21 @@ object KitsConfig {
         .create()
 
     private val configFile = Paths.get("config", "shadowkits", "config.json").toFile()
-    private val menuFile = Paths.get("config", "shadowkits", "menu.json").toFile()
-    private val menuPreviewFile = Paths.get("config", "shadowkits", "menu_preview.json").toFile()
     val kitsFolder: File = Paths.get("config", "shadowkits", "kits").toFile()
+    private val backupsKitsDir: File = Paths.get("config", "shadowkits", "backups", "kits").toFile()
 
     lateinit var config: Config
-    lateinit var menuConfig: MenuConfig
-    lateinit var menuPreviewConfig: PreviewMenuConfig
     val kits = mutableMapOf<String, KitConfig>()
 
     data class Config(
         val database: DatabaseConfig = DatabaseConfig(),
-        val messages: Messages = Messages()
+        val messages: Messages = Messages(),
+        val economy: EconomyConfig = EconomyConfig()
+    )
+
+    data class EconomyConfig(
+        val defaultProvider: String = "auto",
+        val defaultCurrency: String = "dollars"
     )
 
     data class Messages(
@@ -53,39 +58,6 @@ object KitsConfig {
         val kitBlockLookAtBlock: String = "&cLook at a block within 6 blocks to use this command!",
         val cooldownLoreFormat: String = "&7Cooldown: &e%time%",
         val cooldownReadyText: String = "&aReady"
-        )
-
-
-    data class MenuConfig(
-        val title: String = "&6Select a Kit",
-        val size: Int = 54,
-        val pages: Int = 3,
-        val fillItem: String = "minecraft:black_stained_glass_pane",
-        val fillerName: String = " ",
-        val fillerCustomModelData: Int? = null,
-        val fillersEnabled: Boolean = true,
-        val fillerSlots: List<Int> = listOf(
-            0,1,2,3,4,5,6,7,8,9,17,18,26,27,35,36,44,46,47,48,50,51,52
-        ),
-        val nextPageButton: ButtonConfig = ButtonConfig(53, "minecraft:arrow", "&aNext Page"),
-        val prevPageButton: ButtonConfig = ButtonConfig(45, "minecraft:arrow", "&aPrevious Page"),
-        val closeButton: ButtonConfig = ButtonConfig(49, "minecraft:barrier", "&cClose")
-    )
-
-    data class PreviewMenuConfig(
-        val title: String = "&6Kit Preview",
-        val size: Int = 54,
-        val fillItem: String = "minecraft:gray_stained_glass_pane",
-        val fillerName: String = " ",
-        val fillerCustomModelData: Int? = null,
-        val fillersEnabled: Boolean = true,
-        val fillerSlots: List<Int> = listOf(
-            0,1,2,3,4,5,6,7,8,9,17,18,26,27,35,36,44,45,46,47,48,50,51,52,53
-        ),
-        val previewSlots: List<Int> = listOf(
-            10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34,37,38,39,40,41,42,43
-        ),
-        val closeButton: ButtonConfig = ButtonConfig(49, "minecraft:barrier", "&cClose")
     )
 
     data class MysqlConfig(
@@ -102,13 +74,6 @@ object KitsConfig {
         val mysql: MysqlConfig = MysqlConfig()
     )
 
-    data class ButtonConfig(
-        val slot: Int,
-        val material: String,
-        val name: String,
-        val customModelData: Int? = null
-    )
-
     data class KitConfig(
         val name: String,
         val onJoin: Boolean,
@@ -117,6 +82,8 @@ object KitsConfig {
         val claims: Boolean,
         val maxClaims: Int,
         val permission: String?,
+        val economyProvider: String?,
+        val currency: String?,
         val costMoney: Boolean,
         val cost: Int,
         val claimSound: String?,
@@ -124,13 +91,69 @@ object KitsConfig {
         val page: Int = 1,
         val slotOnPage: Int = 1,
         val displayItem: ItemConfig,
-        val items: List<ItemConfig>,
-        val commands: List<CommandItemConfig>
+        val rewards: List<Reward>? = null,
+        val items: List<ItemConfig> = emptyList(),
+        val commands: List<CommandItemConfig> = emptyList()
     )
 
     data class CommandItemConfig(
         val command: String,
         val displayItem: ItemConfig
+    )
+
+    data class CommandDisplayItem(
+        val material: String,
+        val amount: Int = 1,
+        val displayname: String,
+        val lore: List<String> = emptyList(),
+        val enchantEffect: Boolean = false,
+        val hideTooltip: Boolean? = null,
+        val customModelData: Int? = null
+    )
+
+    data class PrizePackEntry(
+        val material: String? = null,
+        val amount: Int? = 1,
+        val displayname: String? = null,
+        val lore: List<String>? = null,
+        val enchants: List<EnchantmentConfig>? = null,
+        val attributes: List<AttributeConfig>? = null,
+        val unbreakable: Boolean? = null,
+        val hideTooltip: Boolean? = null,
+        val customModelData: Int? = null,
+        val command: String? = null
+    )
+
+    data class WeightedRewardEntry(
+        val weight: Double = 1.0,
+        val material: String? = null,
+        val amount: Int? = 1,
+        val displayname: String? = null,
+        val lore: List<String>? = null,
+        val enchants: List<EnchantmentConfig>? = null,
+        val attributes: List<AttributeConfig>? = null,
+        val unbreakable: Boolean? = null,
+        val hideTooltip: Boolean? = null,
+        val customModelData: Int? = null,
+        val command: String? = null
+    )
+
+    data class Reward(
+        val type: String,
+        val material: String? = null,
+        val amount: Int? = null,
+        val displayname: String? = null,
+        val lore: List<String>? = null,
+        val enchants: List<EnchantmentConfig>? = null,
+        val attributes: List<AttributeConfig>? = null,
+        val enchantEffect: Boolean? = null,
+        val unbreakable: Boolean? = null,
+        val hideTooltip: Boolean? = null,
+        val customModelData: Int? = null,
+        val command: String? = null,
+        val displayItem: CommandDisplayItem? = null,
+        val pack: List<PrizePackEntry>? = null,
+        val randomList: List<WeightedRewardEntry>? = null
     )
 
     data class ItemConfig(
@@ -171,14 +194,74 @@ object KitsConfig {
         val level: Int
     )
 
+    private fun backupKitFile(original: File) {
+        runCatching {
+            if (!original.exists() || original.isDirectory) return
+            backupsKitsDir.mkdirs()
+
+            val stamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS").format(Date())
+            val backup = File(backupsKitsDir, "${original.nameWithoutExtension}_$stamp.json")
+
+            original.copyTo(backup, overwrite = false)
+        }
+    }
+
+    fun migrateLegacy(kit: KitConfig): KitConfig {
+        val legacyItems: List<ItemConfig>? = kit.items
+        val legacyCommands: List<CommandItemConfig>? = kit.commands
+
+        if (kit.rewards != null) {
+            return kit.copy(items = emptyList(), commands = emptyList())
+        }
+
+        val asRewards = buildList<Reward> {
+            legacyItems.orEmpty().forEach { itc ->
+                add(
+                    Reward(
+                        type = "item",
+                        material = itc.material,
+                        amount = itc.amount,
+                        displayname = itc.displayname,
+                        lore = itc.lore,
+                        enchants = itc.enchants,
+                        attributes = itc.attributes,
+                        enchantEffect = itc.enchantEffect,
+                        unbreakable = itc.unbreakable,
+                        hideTooltip = null,
+                        customModelData = itc.customModelData
+                    )
+                )
+            }
+
+            legacyCommands.orEmpty().forEach { cc ->
+                add(
+                    Reward(
+                        type = "command",
+                        command = cc.command,
+                        displayItem = CommandDisplayItem(
+                            material = cc.displayItem.material,
+                            amount = cc.displayItem.amount,
+                            displayname = cc.displayItem.displayname ?: "&eCommand",
+                            lore = cc.displayItem.lore ?: emptyList(),
+                            enchantEffect = cc.displayItem.enchantEffect,
+                            customModelData = cc.displayItem.customModelData
+                        )
+                    )
+                )
+            }
+        }
+        return kit.copy(
+            rewards = asRewards,
+            items = emptyList(),
+            commands = emptyList()
+        )
+    }
 
     fun loadConfig() {
         kitsFolder.mkdirs()
         KitManager.updateCooldownsAfterReload()
 
         config = loadOrCreateJson(configFile, Config())
-        menuConfig = loadOrCreateJson(menuFile, MenuConfig())
-        menuPreviewConfig = loadOrCreateJson(menuPreviewFile, PreviewMenuConfig())
 
         kits.clear()
         if (kitsFolder.listFiles()?.isEmpty() != false) {
@@ -186,23 +269,31 @@ object KitsConfig {
         }
 
         kitsFolder.listFiles { file -> file.extension == "json" }?.forEach { file ->
-            val kit = loadJson(file, KitConfig("", false,
-                firstTimeJoin = false,
-                cooldown = "0s",
-                claims = false,
-                maxClaims = 0,
-                permission = null,
-                costMoney = false,
-                cost = 0,
-                claimSound = null,
-                cooldownSound = null,
-                page = 1,
-                slotOnPage = -1,
-                displayItem = ItemConfig("minecraft:paper"),
-                items = emptyList(),
-                commands = emptyList()
-            ))
-            kits[kit.name.lowercase()] = kit
+            val loaded = loadJson(
+                file,
+                KitConfig(
+                    "",
+                    false,
+                    firstTimeJoin = false,
+                    cooldown = "0s",
+                    claims = false,
+                    maxClaims = 0,
+                    permission = null,
+                    economyProvider = null,
+                    currency = null,
+                    costMoney = false,
+                    cost = 0,
+                    claimSound = null,
+                    cooldownSound = null,
+                    page = 1,
+                    slotOnPage = -1,
+                    displayItem = ItemConfig("minecraft:paper"),
+                    items = emptyList(),
+                    commands = emptyList()
+                )
+            )
+            val migrated = migrateLegacy(loaded)
+            kits[migrated.name.lowercase()] = migrated
         }
 
         saveConfig()
@@ -232,7 +323,9 @@ object KitsConfig {
             cooldown = "1h",
             claims = true,
             maxClaims = 5,
-            permission = "kit.adventurestarter",
+            permission = "kit.starter",
+            economyProvider = "auto",
+            currency = "money",
             costMoney = false,
             cost = 100,
             claimSound = "minecraft:entity.player.levelup",
@@ -250,74 +343,93 @@ object KitsConfig {
                 cooldownLore = true,
                 enchantEffect = true
             ),
-            items = listOf(
-                ItemConfig(
-                    material = "minecraft:diamond_sword",
+            rewards = listOf(
+                Reward(
+                    type = "item",
+                    material = "minecraft:iron_pickaxe",
                     amount = 1,
+                    displayname = "&bIron Pickaxe",
+                    lore = listOf("&7Handy starter tool"),
                     enchants = listOf(
-                        EnchantmentConfig("minecraft:sharpness", 50),
-                        EnchantmentConfig("minecraft:unbreaking", 10)
-                    ),
-                    displayname = "&bStarter Sword",
-                    lore = listOf("&7A reliable sword for adventure!"),
-                    enchantEffect = true,
-                    damage = 50
-                ),
-                ItemConfig(
-                    material = "minecraft:diamond_pickaxe",
-                    amount = 1,
-                    enchants = listOf(
-                        EnchantmentConfig("minecraft:efficiency", 3),
                         EnchantmentConfig("minecraft:unbreaking", 2)
                     ),
-                    displayname = "&bStarter Pickaxe",
-                    lore = listOf("&7Mine faster with efficiency!")
+                    enchantEffect = true
                 ),
-                ItemConfig(
-                    material = "minecraft:diamond_axe",
-                    amount = 1,
-                    enchants = listOf(
-                        EnchantmentConfig("minecraft:efficiency", 3),
-                        EnchantmentConfig("minecraft:unbreaking", 2)
-                    ),
-                    displayname = "&bStarter Axe",
-                    lore = listOf("&7Chop trees with ease!")
-                ),
-                ItemConfig(
-                    material = "minecraft:diamond_shovel",
-                    amount = 1,
-                    enchants = listOf(
-                        EnchantmentConfig("minecraft:efficiency", 3),
-                        EnchantmentConfig("minecraft:unbreaking", 2)
-                    ),
-                    displayname = "&bStarter Shovel",
-                    lore = listOf("&7Dig through dirt effortlessly!")
-                )
-            ),
-            commands = listOf(
-                CommandItemConfig(
-                    command = "give %player% minecraft:cooked_beef 32",
-                    displayItem = ItemConfig(
+
+                Reward(
+                    type = "command",
+                    command = "give %player% minecraft:cooked_beef 16",
+                    displayItem = CommandDisplayItem(
                         material = "minecraft:cooked_beef",
-                        amount = 32,
-                        displayname = "&6Starter Food",
-                        lore = listOf("&7Receive 32 cooked beef for your adventure!")
+                        amount = 16,
+                        displayname = "&6Food Voucher",
+                        lore = listOf("&7Runs a give-food command")
+                    )
+                ),
+
+                Reward(
+                    type = "item_pack",
+                    displayname = "&aStarter Supplies",
+                    lore = listOf("&7A small pack of basics"),
+                    pack = listOf(
+                        PrizePackEntry(material = "minecraft:oak_log", amount = 32, displayname = "&eOak Logs"),
+                        PrizePackEntry(material = "minecraft:torch", amount = 16, displayname = "&eTorches")
+                    )
+                ),
+
+                Reward(
+                    type = "command_pack",
+                    displayItem = CommandDisplayItem(
+                        material = "minecraft:paper",
+                        amount = 1,
+                        displayname = "&dCommand Pack",
+                        lore = listOf("&7Executes multiple commands")
+                    ),
+                    pack = listOf(
+                        PrizePackEntry(command = "effect give %player% minecraft:regeneration 5 1 true"),
+                        PrizePackEntry(command = "say ShadowKits: Command pack reward for %player%")
+                    )
+                ),
+
+                Reward(
+                    type = "item_random",
+                    displayname = "&eRandom Item",
+                    lore = listOf("&7One random item from the list"),
+                    randomList = listOf(
+                        WeightedRewardEntry(weight = 1.0, material = "minecraft:diamond", amount = 1, displayname = "&bDiamond"),
+                        WeightedRewardEntry(weight = 3.0, material = "minecraft:gold_ingot", amount = 3, displayname = "&6Gold Ingots"),
+                        WeightedRewardEntry(weight = 6.0, material = "minecraft:iron_ingot", amount = 5, displayname = "&fIron Ingots")
+                    )
+                ),
+
+                Reward(
+                    type = "command_random",
+                    displayItem = CommandDisplayItem(
+                        material = "minecraft:tripwire_hook",
+                        amount = 1,
+                        displayname = "&eRandom Command",
+                        lore = listOf("&7Executes one random command")
+                    ),
+                    randomList = listOf(
+                        WeightedRewardEntry(weight = 1.0, command = "effect give %player% minecraft:strength 60 1 true"),
+                        WeightedRewardEntry(weight = 2.0, command = "effect give %player% minecraft:speed 60 1 true"),
+                        WeightedRewardEntry(weight = 3.0, command = "say ShadowKits: Good luck, %player%!")
                     )
                 )
-            )
+            ),
+            items = emptyList(),
+            commands = emptyList()
         )
 
         val starterFile = File(kitsFolder, "starter.json")
-        starterFile.writeText(gson.toJson(starterKit))
+        saveKitJson(starterFile, starterKit)
         kits[starterKit.name.lowercase()] = starterKit
     }
 
     fun saveConfig() {
         saveJson(configFile, config)
-        saveJson(menuFile, menuConfig)
-        saveJson(menuPreviewFile, menuPreviewConfig)
         kits.forEach { (name, kit) ->
-            saveJson(File(kitsFolder, "$name.json"), kit)
+            saveKitJson(File(kitsFolder, "$name.json"), kit)
         }
     }
 
@@ -326,6 +438,28 @@ object KitsConfig {
             if (file.exists()) gson.fromJson(file.readText(), object : TypeToken<T>() {}.type) else default
         } catch (_: Exception) {
             default
+        }
+    }
+
+    private fun saveKitJson(file: File, kit: KitConfig) {
+        file.parentFile.mkdirs()
+        val jsonObj = gson.toJsonTree(kit).asJsonObject
+        if (jsonObj.has("rewards")) {
+            jsonObj.remove("items")
+            jsonObj.remove("commands")
+        }
+        val newText = gson.toJson(jsonObj)
+        val oldText = runCatching { if (file.exists()) file.readText() else null }.getOrNull()
+
+        fun norm(s: String) = s.trim().replace("\r\n", "\n")
+
+        val changed = oldText == null || norm(oldText) != norm(newText)
+        if (changed && file.exists()) {
+            backupKitFile(file)
+        }
+
+        if (changed) {
+            file.writeText(newText)
         }
     }
 
@@ -367,5 +501,4 @@ object KitsConfig {
 
         return processAllFormats(formattedMessage)
     }
-
 }

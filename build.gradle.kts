@@ -2,8 +2,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "2.1.10"
-    id("fabric-loom") version "1.9.2"
+    kotlin("jvm") version "2.3.0"
+    id("fabric-loom") version "1.14.10"
     id("maven-publish")
 }
 
@@ -26,7 +26,7 @@ java {
 
 repositories {
     mavenCentral()
-
+    maven("https://maven.impactdev.net/repository/development")
 }
 
 dependencies {
@@ -39,6 +39,10 @@ dependencies {
     modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")
     modImplementation(files("libs/fabric-permissions-api-0.3.1.jar"))
     modImplementation(files("libs/beconomy-1.5.jar"))
+    modImplementation(files("libs/Impactor-Fabric-5.2.8+1.20.1.jar"))
+    api("net.kyori:adventure-text-serializer-gson:${property("kyori_version")}")
+    api("net.kyori:adventure-text-minimessage:${property("kyori_version")}")
+    api("net.kyori:adventure-api:${property("kyori_version")}")
 }
 
 tasks.processResources {
@@ -46,15 +50,6 @@ tasks.processResources {
     inputs.property("minecraft_version", project.property("minecraft_version"))
     inputs.property("loader_version", project.property("loader_version"))
     filteringCharset = "UTF-8"
-
-    filesMatching("fabric.mod.json") {
-        expand(
-            "version" to project.version,
-            "minecraft_version" to project.property("minecraft_version"),
-            "loader_version" to project.property("loader_version"),
-            "kotlin_loader_version" to project.property("kotlin_loader_version")
-        )
-    }
 }
 
 tasks.withType<JavaCompile>().configureEach {

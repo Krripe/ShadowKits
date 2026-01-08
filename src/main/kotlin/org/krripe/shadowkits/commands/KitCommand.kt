@@ -5,21 +5,22 @@ import java.util.concurrent.CompletableFuture
 import com.mojang.brigadier.Command
 import com.mojang.brigadier.arguments.StringArgumentType
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
-import net.minecraft.registry.Registries
 import net.minecraft.server.command.CommandManager
 import net.minecraft.server.command.ServerCommandSource
 import net.minecraft.server.network.ServerPlayerEntity
-import net.minecraft.util.Identifier
 import net.minecraft.util.hit.BlockHitResult
 import net.minecraft.util.hit.HitResult
-import org.krripe.shadowkits.config.BlockKitsConfig
 import org.krripe.shadowkits.config.KitsConfig
 import org.krripe.shadowkits.database.KitsDatabaseManager
-import org.krripe.shadowkits.gui.KitGui
-import org.krripe.shadowkits.gui.KitPreviewGui
+import org.krripe.shadowkits.gui.BlockPrivewGUIConfig
+import org.krripe.shadowkits.gui.MainGUI
+import org.krripe.shadowkits.gui.MainGUIConfig
+import org.krripe.shadowkits.gui.PrivewGUI
+import org.krripe.shadowkits.gui.PrivewGUIConfig
 import org.krripe.shadowkits.kits.KitBlockManager
 import org.krripe.shadowkits.kits.KitManager
 import org.krripe.shadowkits.utils.PermissionsSystem
+import org.krripe.shadowkits.utils.SoundHelper
 import java.io.File
 
 object KitCommand {
@@ -138,8 +139,10 @@ object KitCommand {
                                 KitsConfig.loadConfig()
                                 KitsDatabaseManager.shutdown()
                                 KitsDatabaseManager.initialize()
-
-                                BlockKitsConfig.load()
+                                MainGUI.shutdownAll()
+                                MainGUIConfig.reload()
+                                PrivewGUIConfig.resetCacheTemplate()
+                                BlockPrivewGUIConfig.reload()
                                 KitBlockManager.loadKitBlocks()
 
                                 sender.sendFeedback(
@@ -156,7 +159,7 @@ object KitCommand {
                     .requires { permissionsSystem.hasPermission(it, "kits.view", 0) }
                     .executes { ctx ->
                         val player = ctx.source.player ?: return@executes 0
-                        KitGui.openKitsMenu(player)
+                        MainGUI.open(player)
                         Command.SINGLE_SUCCESS
                     }
             )
@@ -179,7 +182,7 @@ object KitCommand {
                                             return@executes 0
                                         }
 
-                                        KitPreviewGui.openKitPreview(player, kit)
+                                        PrivewGUI.open(player, kit)
                                         Command.SINGLE_SUCCESS
                                     }
                             )
@@ -306,6 +309,8 @@ object KitCommand {
             claims = true,
             maxClaims = 99,
             permission = "kit.create",
+            economyProvider = "auto",
+            currency = "money",
             costMoney = false,
             cost = 0,
             claimSound = "minecraft:entity.player.levelup",
@@ -313,6 +318,7 @@ object KitCommand {
             page = 1,
             slotOnPage = 20,
             displayItem = KitsConfig.ItemConfig("minecraft:paper"),
+            rewards = emptyList(),
             items = emptyList(),
             commands = emptyList()
         )
@@ -338,32 +344,18 @@ object KitCommand {
             return
         }
 
-        val itemsToGive = kit.items.map { KitManager.createItemStack(it, target, kit.name) }
-        val availableSlots = target.inventory.main.count { it.isEmpty }
-
-        if (availableSlots < itemsToGive.size) {
+        val ok = KitManager.givePlayerKit(target, kit)
+        if (!ok) {
             sender.sendError(KitsConfig.getMessage("inventoryFull"))
             return
         }
 
-        itemsToGive.forEach { itemStack ->
-            target.inventory.insertStack(itemStack)
-        }
-
-        kit.commands.forEach { cmd ->
-            val command = cmd.command.replace("%player%", target.name.string)
-            target.server.commandManager.executeWithPrefix(target.commandSource, command)
-        }
-
         target.sendMessage(KitsConfig.getMessage("kitClaimed", "kit" to kit.name), false)
 
-        kit.claimSound?.let {
-            val soundEvent = Registries.SOUND_EVENT.get(Identifier.of(it))
-            target.world.playSound(null, target.blockPos, soundEvent, net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f)
-        }
+        SoundHelper.play(target, kit.claimSound)
 
         sender.sendFeedback(
-            { KitsConfig.getMessage("kitGiven", "kit" to name, "player" to target.name.string) },
+            { KitsConfig.getMessage("kitGiven", "kit" to kit.name, "player" to target.name.string) },
             false
         )
     }

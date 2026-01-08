@@ -21,13 +21,17 @@ import net.minecraft.command.CommandRegistryAccess
 import net.minecraft.command.argument.ItemStackArgumentType
 import net.minecraft.resource.featuretoggle.FeatureFlags
 import net.minecraft.server.MinecraftServer
-import org.beconomy.api.BEconomy
 import org.krripe.shadowkits.config.KitsConfig
 import org.krripe.shadowkits.config.KitsConfig.KitConfig
 import org.krripe.shadowkits.database.KitsDatabaseAdapter
 import org.krripe.shadowkits.database.KitsDatabaseManager
+import org.krripe.shadowkits.economy.EconomyRouter
 import org.krripe.shadowkits.utils.CustomColorParser
 import org.krripe.shadowkits.utils.PermissionsSystem
+import org.krripe.shadowkits.config.KitsConfig.Reward
+import org.krripe.shadowkits.config.KitsConfig.PrizePackEntry
+import org.krripe.shadowkits.config.KitsConfig.WeightedRewardEntry
+import org.krripe.shadowkits.utils.SoundHelper
 import java.io.File
 import java.math.BigDecimal
 import java.nio.file.Paths
@@ -35,7 +39,7 @@ import java.time.Instant
 import java.util.*
 
 object KitManager {
-    private val dataFolder = Paths.get("config", "shadowkits", "player_data").toFile()
+    private val dataFolder = Paths.get("config", "shadowkits", "data", "player_data").toFile()
     private val playerCooldowns = mutableMapOf<UUID, MutableMap<String, Long>>()
     private val playerClaims = mutableMapOf<UUID, MutableMap<String, Int>>()
     private val firstJoinDonePlayers = mutableSetOf<UUID>()
@@ -72,24 +76,36 @@ object KitManager {
 
     private fun savePlayerData(player: UUID) {
         if (KitsDatabaseManager.isUsingDatabase()) {
-            playerCooldowns[player]?.forEach { (kit, exp) ->
-                db?.saveCooldown(player, kit, exp)
-            }
-            playerClaims[player]?.forEach { (kit, c) ->
-                db?.saveClaims(player, kit, c)
-            }
+            playerCooldowns[player]?.forEach { (kit, exp) -> db?.saveCooldown(player, kit, exp) }
+            playerClaims[player]?.forEach { (kit, c) -> db?.saveClaims(player, kit, c) }
             db?.setFirstJoinDone(player, firstJoinDonePlayers.contains(player))
+            return
         }
 
         val file = File(dataFolder, "$player.json")
         val data = PlayerData(
             cooldowns = playerCooldowns[player] ?: mutableMapOf(),
             claims    = playerClaims[player] ?: mutableMapOf(),
-            firstJoinDone = firstJoinDonePlayers.contains(player)   // <— NOU
+            firstJoinDone = firstJoinDonePlayers.contains(player)
         )
+        file.parentFile.mkdirs()
         file.writeText(KitsConfig.gson.toJson(data))
     }
 
+    fun effectiveRewards(kit: KitConfig): List<Reward> {
+        return kit.rewards ?: KitsConfig.migrateLegacy(kit).rewards.orEmpty()
+    }
+
+    fun givePlayerKit(target: ServerPlayerEntity, kit: KitConfig): Boolean {
+        val rewards = kit.rewards ?: KitsConfig.migrateLegacy(kit).rewards.orEmpty()
+
+        val needSlots = requiredSlotsTotal(rewards)
+        val freeSlots = target.inventory.main.count { it.isEmpty }
+        if (freeSlots < needSlots) return false
+
+        rewards.forEach { giveReward(target, it) }
+        return true
+    }
 
     data class PlayerData(
         val cooldowns: Map<String, Long> = mutableMapOf(),
@@ -135,105 +151,79 @@ object KitManager {
 
         val uuid = player.uuid
         val cooldownSeconds = parseCooldown(kit.cooldown)
-
-        val itemsToGive = kit.items.map { createItemStack(it, player, kit.name) }
-        val availableSlots = player.inventory.main.count { it.isEmpty }
-        if (availableSlots < itemsToGive.size) {
+        val kitKey = kit.name.lowercase()
+        val rewards = effectiveRewards(kit)
+        val needSlots = requiredSlotsTotal(rewards)
+        val freeSlots = player.inventory.main.count { it.isEmpty }
+        if (freeSlots < needSlots) {
             player.sendMessage(KitsConfig.getMessage("inventoryFull"), false)
             return
         }
 
-        var price: Pair<BigDecimal, String>? = null
-
-        if (kit.costMoney) {
-            if (BEconomy.isInitialized()) {
-                val economy = BEconomy.getAPI()
-                val cur = economy.getPrimaryCurrency()?.currencyType ?: "default_currency"
-                val cost = BigDecimal(kit.cost)
-
-                if (!economy.hasEnoughFunds(uuid, cost, cur)) {
-                    player.sendMessage(KitsConfig.getMessage("notEnoughMoney", "cost" to cost.toString()), false)
-                    return
-                }
-                price = cost to cur
-            } else {
-                player.sendMessage(KitsConfig.getMessage("economyNotAvailable"), false)
-                return
-            }
-        }
+        val provider = kit.economyProvider ?: KitsConfig.config.economy.defaultProvider
+        val currency = kit.currency ?: KitsConfig.config.economy.defaultCurrency
+        val amount   = BigDecimal(kit.cost)
+        fun costLabel() = if (currency.isBlank()) amount.toPlainString() else "${amount.toPlainString()} $currency"
 
         if (KitsDatabaseManager.isUsingDatabase()) {
-            val decision = db?.tryConsumeKit(uuid, kit.name.lowercase(), cooldownSeconds, kit.claims, kit.maxClaims)
-            when (decision) {
+            when (val decision = db?.tryConsumeKit(uuid, kitKey, cooldownSeconds, kit.claims, kit.maxClaims)) {
                 is KitsDatabaseAdapter.ClaimDecision.Allowed -> {
-                    playerCooldowns.computeIfAbsent(uuid){ mutableMapOf() }[kit.name.lowercase()] =
-                        decision.newExpiresAt
+                    if (kit.costMoney) {
+                        if (!EconomyRouter.isAvailable() || !EconomyRouter.charge(uuid, amount, currency, provider)) {
+                            db?.clearCooldown(uuid, kitKey)
+                            if (kit.claims) {
+                                val cur = db?.getClaims(uuid, kitKey) ?: 0
+                                val newVal = (cur - 1).coerceAtLeast(0)
+                                if (newVal <= 0) db?.clearClaims(uuid, kitKey) else db?.saveClaims(uuid, kitKey, newVal)
+                            }
+                            player.sendMessage(KitsConfig.getMessage("notEnoughMoney", "cost" to costLabel()), false)
+                            return
+                        }
+                        player.sendMessage(KitsConfig.getMessage("kitPurchased", "cost" to costLabel()), false)
+                    }
+
+                    playerCooldowns.computeIfAbsent(uuid){ mutableMapOf() }[kitKey] = decision.newExpiresAt
                     if (kit.claims) {
-                        playerClaims.computeIfAbsent(uuid){ mutableMapOf() }
-                            .merge(kit.name.lowercase(), 1) { a, _ -> a + 1 }
+                        playerClaims.computeIfAbsent(uuid){ mutableMapOf() }.merge(kitKey, 1) { a, _ -> a + 1 }
                     }
                 }
                 is KitsDatabaseAdapter.ClaimDecision.Denied -> {
-                    when (decision.reason) {
+                    val msg = when (decision.reason) {
                         KitsDatabaseAdapter.ClaimDecision.Reason.COOLDOWN ->
-                            player.sendMessage(KitsConfig.getMessage("inCooldown", "kit" to kit.name), false)
+                            KitsConfig.getMessage("inCooldown", "kit" to kit.name)
                         KitsDatabaseAdapter.ClaimDecision.Reason.MAX_CLAIMS ->
-                            player.sendMessage(KitsConfig.getMessage("kitMaxClaimsReached", "kit" to kit.name, "max" to kit.maxClaims.toString()), false)
+                            KitsConfig.getMessage("kitMaxClaimsReached", "kit" to kit.name, "max" to kit.maxClaims.toString())
                         else ->
-                            player.sendMessage(KitsConfig.getMessage("inCooldown", "kit" to kit.name), false)
+                            KitsConfig.getMessage("inCooldown", "kit" to kit.name)
                     }
+                    player.sendMessage(msg, false)
                     return
                 }
-                null -> return
-            }
-
-            playerCooldowns.computeIfAbsent(uuid) { mutableMapOf() }[kit.name.lowercase()] =
-                Instant.now().epochSecond + cooldownSeconds
-            if (kit.claims) {
-                playerClaims.computeIfAbsent(uuid) { mutableMapOf() }
-                    .merge(kit.name.lowercase(), 1) { old, _ -> old + 1 }
+                else -> return
             }
         } else {
-            playerCooldowns.computeIfAbsent(uuid) { mutableMapOf() }[kit.name.lowercase()] =
-                Instant.now().epochSecond + cooldownSeconds
-
-            if (kit.claims) {
-                playerClaims.computeIfAbsent(uuid) { mutableMapOf() }
-                    .merge(kit.name.lowercase(), 1) { old, _ -> old + 1 }
+            if (kit.costMoney) {
+                if (!EconomyRouter.isAvailable() || !EconomyRouter.charge(uuid, amount, currency, provider)) {
+                    player.sendMessage(KitsConfig.getMessage("notEnoughMoney", "cost" to costLabel()), false)
+                    return
+                }
+                player.sendMessage(KitsConfig.getMessage("kitPurchased", "cost" to costLabel()), false)
             }
 
+            playerCooldowns.computeIfAbsent(uuid){ mutableMapOf() }[kitKey] =
+                Instant.now().epochSecond + cooldownSeconds
+            if (kit.claims) {
+                playerClaims.computeIfAbsent(uuid){ mutableMapOf() }.merge(kitKey, 1) { a, _ -> a + 1 }
+            }
             savePlayerData(uuid)
         }
 
-        price?.let { (amount, currency) ->
-            val economy = BEconomy.getAPI()
-            val ok = economy.subtractBalance(uuid, amount, currency)
-            if (!ok) {
-                player.sendMessage(KitsConfig.getMessage("notEnoughMoney", "cost" to amount.toString()), false)
-                return
-            }
-            player.sendMessage(KitsConfig.getMessage("kitPurchased", "cost" to amount.toString()), false)
-        }
-
-        itemsToGive.forEach { itemStack ->
-            player.inventory.insertStack(itemStack)
-        }
-
-        kit.commands.forEach { commandItemConfig ->
-            val command = commandItemConfig.command.replace("%player%", player.name.string)
-            player.server.commandManager.executeWithPrefix(player.server.commandSource, command)
-        }
+        rewards.forEach { giveReward(player, it) }
 
         player.sendMessage(KitsConfig.getMessage("kitClaimed", "kit" to kit.name), false)
 
-        kit.cooldownSound?.let {
-            val soundEvent = Registries.SOUND_EVENT.get(Identifier.of(it))
-            player.world.playSound(null, player.blockPos, soundEvent, net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f)
-        }
-        kit.claimSound?.let {
-            val soundEvent = Registries.SOUND_EVENT.get(Identifier.of(it))
-            player.world.playSound(null, player.blockPos, soundEvent, net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f)
-        }
+        kit.cooldownSound?.let { id -> SoundHelper.play(player, id) }
+        kit.claimSound?.let    { id -> SoundHelper.play(player, id) }
     }
 
     private fun tryParseItemString(
@@ -520,5 +510,106 @@ object KitManager {
         player.sendMessage(KitsConfig.getMessage("kitCooldownResetSelf", "kit" to kit.name), false)
 
         return true
+    }
+
+    private fun requiredSlotsFor(reward: Reward): Int = when (reward.type.lowercase()) {
+        "item"          -> 1
+        "item_pack"     -> reward.pack?.count { it.material != null } ?: 0
+        "item_random"   -> 1
+        "command", "command_pack", "command_random" -> 0
+        else -> 0
+    }
+
+    private fun requiredSlotsTotal(rewards: List<Reward>): Int =
+        rewards.sumOf { requiredSlotsFor(it) }
+
+    private fun selectWeighted(list: List<WeightedRewardEntry>): WeightedRewardEntry? {
+        val valid = list.filter { it.weight > 0.0 }
+        if (valid.isEmpty()) return null
+        val total = valid.sumOf { it.weight }
+        val r = kotlin.random.Random.nextDouble(0.0, total)
+        var acc = 0.0
+        for (e in valid) {
+            acc += e.weight
+            if (r <= acc) return e
+        }
+        return valid.last()
+    }
+
+    private fun createStack(entry: PrizePackEntry, player: ServerPlayerEntity): ItemStack {
+        val material = entry.material ?: "minecraft:paper"
+        val amount   = entry.amount ?: 1
+        val cfg = KitsConfig.ItemConfig(
+            material = material,
+            amount = amount,
+            customModelData = entry.customModelData,
+            enchants = entry.enchants,
+            displayname = entry.displayname,
+            lore = entry.lore,
+            enchantEffect = false,
+            unbreakable = entry.unbreakable ?: false,
+            attributes = entry.attributes
+        )
+        return createItemStack(cfg, player, null)
+    }
+
+    private fun runCommand(cmd: String?, player: ServerPlayerEntity) {
+        if (cmd.isNullOrBlank()) return
+        val c = cmd.replace("%player%", player.name.string)
+        player.server.commandManager.executeWithPrefix(player.server.commandSource, c)
+    }
+
+    private fun giveReward(player: ServerPlayerEntity, reward: Reward) {
+        when (reward.type.lowercase()) {
+
+            "item" -> {
+                val cfg = KitsConfig.ItemConfig(
+                    material = reward.material ?: "minecraft:paper",
+                    amount = reward.amount ?: 1,
+                    customModelData = reward.customModelData,
+                    enchants = reward.enchants,
+                    displayname = reward.displayname,
+                    lore = reward.lore,
+                    enchantEffect = reward.enchantEffect == true,
+                    unbreakable = reward.unbreakable ?: false,
+                    attributes = reward.attributes
+                )
+                player.inventory.insertStack(createItemStack(cfg, player, null))
+            }
+
+            "command" -> runCommand(reward.command, player)
+
+            "item_pack" -> reward.pack?.forEach { entry ->
+                if (entry.material != null) {
+                    player.inventory.insertStack(createStack(entry, player))
+                }
+            }
+
+            "command_pack" -> reward.pack?.forEach { entry ->
+                runCommand(entry.command, player)
+            }
+
+            "item_random" -> {
+                val chosen = selectWeighted(reward.randomList ?: emptyList())
+                if (chosen == null || chosen.material == null) return
+                val entry = PrizePackEntry(
+                    material = chosen.material,
+                    amount = chosen.amount,
+                    displayname = chosen.displayname,
+                    lore = chosen.lore,
+                    enchants = chosen.enchants,
+                    attributes = chosen.attributes,
+                    unbreakable = chosen.unbreakable,
+                    hideTooltip = chosen.hideTooltip,
+                    customModelData = chosen.customModelData
+                )
+                player.inventory.insertStack(createStack(entry, player))
+            }
+
+            "command_random" -> {
+                val chosen = selectWeighted(reward.randomList ?: emptyList())
+                runCommand(chosen?.command, player)
+            }
+        }
     }
 }
