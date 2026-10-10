@@ -11,9 +11,10 @@ import org.krripe.shadowkits.config.KitsConfig
 import org.krripe.shadowkits.database.KitsDatabaseManager
 import org.krripe.shadowkits.kits.KitBlockManager
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
-import org.krripe.shadowkits.gui.BlockPrivewGUIConfig
-import org.krripe.shadowkits.gui.MainGUI
-import org.krripe.shadowkits.gui.MainGUIConfig
+import org.krripe.shadowkits.gui.block.BlockPrivewGUIConfig
+import org.krripe.shadowkits.gui.main.MainGUI
+import org.krripe.shadowkits.gui.main.MainGUIConfig
+import org.krripe.shadowkits.gui.privew.PrivewGUIConfig
 import org.krripe.shadowkits.kits.KitManager
 
 class Shadowkits : ModInitializer {
@@ -35,8 +36,8 @@ class Shadowkits : ModInitializer {
 
 
         ServerLifecycleEvents.SERVER_STARTED.register {
-            KitBlockManager.loadKitBlocks()
             MainGUIConfig.reload()
+            PrivewGUIConfig.resetCacheTemplate()
             BlockPrivewGUIConfig.reload()
             KitBlockManager.loadKitBlocks()
         }
@@ -44,7 +45,7 @@ class Shadowkits : ModInitializer {
         ServerPlayConnectionEvents.DISCONNECT.register(ServerPlayConnectionEvents.Disconnect { handler, _ ->
             val player = handler.player
             player.server.execute {
-                MainGUI.shutdownAll()
+                MainGUI.shutdownPlayer(player.uuid)
             }
         })
 

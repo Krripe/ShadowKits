@@ -1,4 +1,4 @@
-package org.krripe.shadowkits.utils
+package org.krripe.shadowkits.gui
 
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.entity.player.PlayerInventory

@@ -12,11 +12,11 @@ import net.minecraft.util.hit.BlockHitResult
 import net.minecraft.util.hit.HitResult
 import org.krripe.shadowkits.config.KitsConfig
 import org.krripe.shadowkits.database.KitsDatabaseManager
-import org.krripe.shadowkits.gui.BlockPrivewGUIConfig
-import org.krripe.shadowkits.gui.MainGUI
-import org.krripe.shadowkits.gui.MainGUIConfig
-import org.krripe.shadowkits.gui.PrivewGUI
-import org.krripe.shadowkits.gui.PrivewGUIConfig
+import org.krripe.shadowkits.gui.block.BlockPrivewGUIConfig
+import org.krripe.shadowkits.gui.main.MainGUI
+import org.krripe.shadowkits.gui.main.MainGUIConfig
+import org.krripe.shadowkits.gui.privew.PrivewGUI
+import org.krripe.shadowkits.gui.privew.PrivewGUIConfig
 import org.krripe.shadowkits.kits.KitBlockManager
 import org.krripe.shadowkits.kits.KitManager
 import org.krripe.shadowkits.utils.PermissionsSystem
@@ -139,6 +139,7 @@ object KitCommand {
                                 KitsConfig.loadConfig()
                                 KitsDatabaseManager.shutdown()
                                 KitsDatabaseManager.initialize()
+
                                 MainGUI.shutdownAll()
                                 MainGUIConfig.reload()
                                 PrivewGUIConfig.resetCacheTemplate()

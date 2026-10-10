@@ -6,8 +6,8 @@ import net.minecraft.server.world.ServerWorld
 import net.minecraft.util.math.BlockPos
 import net.minecraft.world.World
 import org.krripe.shadowkits.config.KitsConfig
-import org.krripe.shadowkits.gui.BlockPrivewGUI
-import org.krripe.shadowkits.gui.BlockPrivewGUIConfig
+import org.krripe.shadowkits.gui.block.BlockPrivewGUI
+import org.krripe.shadowkits.gui.block.BlockPrivewGUIConfig
 import org.krripe.shadowkits.utils.PermissionsSystem
 import java.io.File
 import java.nio.file.Paths
